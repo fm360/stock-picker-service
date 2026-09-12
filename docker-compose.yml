@@ -1,0 +1,49 @@
+services:
+
+  zookeeper:
+    image: confluentinc/cp-zookeeper:7.9.5
+    environment:
+      ZOOKEEPER_CLIENT_PORT: 2181
+      ZOOKEEPER_TICK_TIME: 2000
+    ports:
+      - "2181:2181"
+
+  kafka:
+    image: confluentinc/cp-kafka:7.9.5
+    depends_on:
+      - zookeeper
+    ports:
+      - "9092:9092"
+    environment:
+      KAFKA_BROKER_ID: 1
+      KAFKA_ZOOKEEPER_CONNECT: "zookeeper:2181"
+      KAFKA_LISTENER_SECURITY_PROTOCOL_MAP: INTERNAL:PLAINTEXT,EXTERNAL:PLAINTEXT
+      KAFKA_LISTENERS: INTERNAL://0.0.0.0:29092,EXTERNAL://0.0.0.0:9092
+      KAFKA_ADVERTISED_LISTENERS: INTERNAL://kafka:29092,EXTERNAL://localhost:9092
+      KAFKA_INTER_BROKER_LISTENER_NAME: INTERNAL
+      KAFKA_OFFSETS_TOPIC_REPLICATION_FACTOR: 1
+
+  api:
+    image: python:3.13-slim
+    working_dir: /app
+    volumes:
+      - ./:/app
+    environment:
+      PYTHONPATH: /app/src
+      PYTHONUNBUFFERED: "1"
+      KAFKA_BOOTSTRAP_SERVERS: kafka:29092
+      KAFKA_TOPIC: stock_ticks
+    command: bash -lc "pip install -r requirements.txt && uvicorn stockpicker.api:app --host 0.0.0.0 --port 8000"
+    ports:
+      - "8000:8000"
+    depends_on:
+      - kafka
+
+  gateway:
+    image: nginx:1.27-alpine
+    depends_on:
+      - api
+    ports:
+      - "8080:8080"
+    volumes:
+      - ./services/gateway/nginx.conf:/etc/nginx/nginx.conf:ro

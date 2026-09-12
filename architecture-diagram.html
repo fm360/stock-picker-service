@@ -1,0 +1,503 @@
+<?xml encoding="utf-8" ?><html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>StockPicker Architecture</title>
+<style>
+@import url('https://fonts.googleapis.com/css2?family=JetBrains+Mono:wght@400;600&family=DM+Sans:ital,opsz,wght@0,9..40,300;0,9..40,500;0,9..40,700;0,9..40,900;1,9..40,300&display=swap');
+
+:root {
+  --bg: #0c1018;
+  --surface: #151d2b;
+  --border: #1f2d42;
+  --kafka: #e8652a;
+  --zk: #9775d4;
+  --api: #34d9c4;
+  --gw: #f0a030;
+  --ingest: #4a90e2;
+  --shard: #22c988;
+  --client: #e870a8;
+  --producer: #ef5050;
+  --text: #dfe6f0;
+  --dim: #5a6b82;
+}
+
+* { margin: 0; padding: 0; box-sizing: border-box; }
+
+body {
+  background: var(--bg);
+  background-image:
+    radial-gradient(ellipse 800px 500px at 20% 30%, rgba(75,60,130,0.08), transparent),
+    radial-gradient(ellipse 600px 400px at 80% 70%, rgba(232,101,42,0.06), transparent);
+  color: var(--text);
+  font-family: 'DM Sans', sans-serif;
+  min-height: 100vh;
+}
+
+.page {
+  max-width: 1140px;
+  margin: 0 auto;
+  padding: 48px 32px;
+}
+
+header {
+  margin-bottom: 44px;
+}
+
+h1 {
+  font-size: 2rem;
+  font-weight: 900;
+  letter-spacing: -1px;
+  background: linear-gradient(135deg, var(--api) 0%, var(--kafka) 100%);
+  -webkit-background-clip: text;
+  -webkit-text-fill-color: transparent;
+  margin-bottom: 6px;
+}
+
+.tagline {
+  font-size: 0.88rem;
+  color: var(--dim);
+  font-weight: 300;
+  font-style: italic;
+}
+
+.diagram {
+  position: relative;
+  width: 100%;
+  aspect-ratio: 2.1 / 1;
+}
+
+.zone {
+  position: absolute;
+  border-radius: 16px;
+  border: 1px dashed;
+}
+
+.zone-title {
+  position: absolute;
+  top: 10px;
+  left: 50%;
+  transform: translateX(-50%);
+  font-size: 0.65rem;
+  font-weight: 500;
+  letter-spacing: 3px;
+  text-transform: uppercase;
+  white-space: nowrap;
+}
+
+.node {
+  position: absolute;
+  background: var(--surface);
+  border: 2px solid;
+  border-radius: 12px;
+  padding: 14px 18px;
+  cursor: default;
+  transition: transform 0.2s, box-shadow 0.3s;
+  min-width: 150px;
+  text-align: center;
+}
+
+.node:hover {
+  transform: translateY(-3px) scale(1.03);
+}
+
+.node-name {
+  font-weight: 700;
+  font-size: 0.92rem;
+  margin-bottom: 2px;
+}
+
+.node-detail {
+  font-family: 'JetBrains Mono', monospace;
+  font-size: 0.68rem;
+  opacity: 0.55;
+  line-height: 1.5;
+}
+
+svg.arrows {
+  position: absolute;
+  top: 0; left: 0;
+  width: 100%; height: 100%;
+  pointer-events: none;
+  overflow: visible;
+}
+
+.edge {
+  stroke-width: 2;
+  fill: none;
+}
+
+.edge-label {
+  font-family: 'JetBrains Mono', monospace;
+  font-size: 9px;
+  fill: var(--dim);
+  text-anchor: middle;
+}
+
+@keyframes dash {
+  to { stroke-dashoffset: -20; }
+}
+
+.animated-edge {
+  stroke-dasharray: 8 6;
+  animation: dash 1.5s linear infinite;
+}
+
+@keyframes fadeSlideIn {
+  from { opacity: 0; transform: translateY(18px); }
+  to   { opacity: 1; transform: translateY(0); }
+}
+
+.node { animation: fadeSlideIn 0.5s ease-out both; }
+.node:nth-child(2) { animation-delay: 0.08s; }
+.node:nth-child(3) { animation-delay: 0.16s; }
+.node:nth-child(4) { animation-delay: 0.24s; }
+.node:nth-child(5) { animation-delay: 0.32s; }
+.node:nth-child(6) { animation-delay: 0.40s; }
+.node:nth-child(7) { animation-delay: 0.48s; }
+.node:nth-child(8) { animation-delay: 0.56s; }
+.node:nth-child(9) { animation-delay: 0.64s; }
+.node:nth-child(10){ animation-delay: 0.72s; }
+
+.legend {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 22px;
+  margin-top: 36px;
+  padding: 18px 24px;
+  background: var(--surface);
+  border: 1px solid var(--border);
+  border-radius: 14px;
+}
+
+.legend-item {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  font-size: 0.78rem;
+  color: var(--dim);
+}
+
+.legend-dot {
+  width: 11px; height: 11px;
+  border-radius: 3px;
+  flex-shrink: 0;
+}
+
+.flow-section {
+  margin-top: 40px;
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 20px;
+}
+
+.flow-card {
+  background: var(--surface);
+  border: 1px solid var(--border);
+  border-radius: 14px;
+  padding: 22px 24px;
+}
+
+.flow-card h3 {
+  font-size: 0.85rem;
+  font-weight: 700;
+  margin-bottom: 12px;
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.flow-card ol {
+  padding-left: 18px;
+  font-size: 0.78rem;
+  color: var(--dim);
+  line-height: 1.9;
+}
+
+.flow-card ol li::marker {
+  color: var(--text);
+  font-weight: 700;
+}
+</style>
+</head>
+<body>
+<div class="page">
+  <header>
+    <h1>StockPicker Service Architecture</h1>
+    <p class="tagline">Docker Compose orchestrates all services locally &mdash; data flows left-to-right</p>
+  </header>
+
+  <div class="diagram" id="diagram">
+    <!-- Zones -->
+    <div class="zone" style="left:21%;top:0;width:24%;height:50%;border-color:rgba(232,101,42,0.25);background:rgba(232,101,42,0.03);">
+      <span class="zone-title" style="color: #DC3545; background-color: #ffffff">Kafka Cluster</span>
+    </div>
+    <div class="zone" style="left:52%;top:0;width:24%;height:100%;border-color:rgba(52,217,196,0.2);background:rgba(52,217,196,0.02);">
+      <span class="zone-title" style="color:rgba(52,217,196,0.35);">Python App</span>
+    </div>
+    <div class="zone" style="left:82%;top:22%;width:17%;height:52%;border-color:rgba(34,201,136,0.2);background:rgba(34,201,136,0.03);">
+      <span class="zone-title" style="color:rgba(34,201,136,0.35);">Storage</span>
+    </div>
+
+    <!-- Nodes -->
+    <div class="node" id="producer" style="left:1%;top:12%;border-color:var(--producer);min-width:140px;" onmouseenter="highlightEdges('producer')" onmouseleave="clearEdges()">
+      <div class="node-name" style="color:var(--producer);">Producer</div>
+      <div class="node-detail">producer.py<br>generates tick events</div>
+    </div>
+
+    <div class="node" id="kafka" style="left:23%;top:10%;border-color:var(--kafka);min-width:180px;box-shadow:0 0 24px rgba(232,101,42,0.12);" onmouseenter="highlightEdges('kafka')" onmouseleave="clearEdges()">
+      <div class="node-name" style="color:var(--kafka);">Kafka Broker</div>
+      <div class="node-detail">:9092<br>topic: stock_ticks<br>topic: stock_ticks_dlq</div>
+    </div>
+
+    <div class="node" id="zk" style="left:24%;top:38%;border-color:var(--zk);min-width:170px;" onmouseenter="highlightEdges('zk')" onmouseleave="clearEdges()">
+      <div class="node-name" style="color:var(--zk);">Zookeeper</div>
+      <div class="node-detail">:2181<br>broker coordination</div>
+    </div>
+
+    <div class="node" id="ingestor" style="left:53%;top:6%;border-color:var(--ingest);min-width:185px;" onmouseenter="highlightEdges('ingestor')" onmouseleave="clearEdges()">
+      <div class="node-name" style="color:var(--ingest);">Ingestor</div>
+      <div class="node-detail">ingestor.py (bg thread)<br>validate &rarr; store ticks<br>manual offset commit</div>
+    </div>
+
+    <div class="node" id="api" style="left:53%;top:38%;border-color:var(--api);min-width:185px;box-shadow:0 0 24px rgba(52,217,196,0.1);" onmouseenter="highlightEdges('api')" onmouseleave="clearEdges()">
+      <div class="node-name" style="color:var(--api);">FastAPI Server</div>
+      <div class="node-detail">api.py &nbsp;:8000<br>POST /api/users<br>POST /api/picks<br>GET /api/leaderboard<br>GET /api/portfolio</div>
+    </div>
+
+    <div class="node" id="gateway" style="left:53%;top:76%;border-color:var(--gw);min-width:185px;" onmouseenter="highlightEdges('gateway')" onmouseleave="clearEdges()">
+      <div class="node-name" style="color:var(--gw);">Nginx Gateway</div>
+      <div class="node-detail">:8080<br>reverse proxy + rate limit</div>
+    </div>
+
+    <div class="node" id="client" style="left:1%;top:76%;border-color:var(--client);min-width:140px;" onmouseenter="highlightEdges('client')" onmouseleave="clearEdges()">
+      <div class="node-name" style="color:var(--client);">Client</div>
+      <div class="node-detail">curl / browser<br>test scripts</div>
+    </div>
+
+    <div class="node" id="shard0" style="left:83%;top:26%;border-color:var(--shard);min-width:130px;">
+      <div class="node-name" style="color:var(--shard);font-size:0.82rem;">Shard 0</div>
+      <div class="node-detail">InMemoryShard</div>
+    </div>
+    <div class="node" id="shard1" style="left:83%;top:44%;border-color:var(--shard);min-width:130px;">
+      <div class="node-name" style="color:var(--shard);font-size:0.82rem;">Shard 1</div>
+      <div class="node-detail">InMemoryShard</div>
+    </div>
+    <div class="node" id="shard2" style="left:83%;top:62%;border-color:var(--shard);min-width:130px;">
+      <div class="node-name" style="color:var(--shard);font-size:0.82rem;">Shard 2</div>
+      <div class="node-detail">InMemoryShard</div>
+    </div>
+
+    <!-- SVG Arrows layer -->
+    <svg class="arrows" id="arrowsSvg">
+      <defs>
+        <marker id="ah" markerwidth="10" markerheight="7" refx="9" refy="3.5" orient="auto">
+          <polygon points="0 0, 10 3.5, 0 7" fill="#475569"></polygon>
+        </marker>
+        <marker id="ah-kafka" markerwidth="10" markerheight="7" refx="9" refy="3.5" orient="auto">
+          <polygon points="0 0, 10 3.5, 0 7" fill="#e8652a"></polygon>
+        </marker>
+        <marker id="ah-zk" markerwidth="10" markerheight="7" refx="9" refy="3.5" orient="auto">
+          <polygon points="0 0, 10 3.5, 0 7" fill="#9775d4"></polygon>
+        </marker>
+        <marker id="ah-api" markerwidth="10" markerheight="7" refx="9" refy="3.5" orient="auto">
+          <polygon points="0 0, 10 3.5, 0 7" fill="#34d9c4"></polygon>
+        </marker>
+        <marker id="ah-ingest" markerwidth="10" markerheight="7" refx="9" refy="3.5" orient="auto">
+          <polygon points="0 0, 10 3.5, 0 7" fill="#4a90e2"></polygon>
+        </marker>
+        <marker id="ah-gw" markerwidth="10" markerheight="7" refx="9" refy="3.5" orient="auto">
+          <polygon points="0 0, 10 3.5, 0 7" fill="#f0a030"></polygon>
+        </marker>
+        <marker id="ah-client" markerwidth="10" markerheight="7" refx="9" refy="3.5" orient="auto">
+          <polygon points="0 0, 10 3.5, 0 7" fill="#e870a8"></polygon>
+        </marker>
+        <marker id="ah-producer" markerwidth="10" markerheight="7" refx="9" refy="3.5" orient="auto">
+          <polygon points="0 0, 10 3.5, 0 7" fill="#ef5050"></polygon>
+        </marker>
+      </defs>
+    </svg>
+  </div>
+
+  <div class="legend">
+    <div class="legend-item"><div class="legend-dot" style="background:var(--producer)"></div>Producer</div>
+    <div class="legend-item"><div class="legend-dot" style="background:var(--kafka)"></div>Kafka Broker</div>
+    <div class="legend-item"><div class="legend-dot" style="background:var(--zk)"></div>Zookeeper</div>
+    <div class="legend-item"><div class="legend-dot" style="background:var(--ingest)"></div>Ingestor</div>
+    <div class="legend-item"><div class="legend-dot" style="background:var(--api)"></div>FastAPI Server</div>
+    <div class="legend-item"><div class="legend-dot" style="background:var(--gw)"></div>Nginx Gateway</div>
+    <div class="legend-item"><div class="legend-dot" style="background:var(--shard)"></div>In-Memory Shards</div>
+    <div class="legend-item"><div class="legend-dot" style="background:var(--client)"></div>Client</div>
+  </div>
+
+  <div class="flow-section">
+    <div class="flow-card">
+      <h3><span style="color:var(--kafka);">&#9654;</span> Tick Ingestion Flow</h3>
+      <ol>
+        <li><b>Producer</b> generates random stock tick events</li>
+        <li>Events published to Kafka topic <code>stock_ticks</code></li>
+        <li><b>Ingestor</b> consumes from Kafka (background thread)</li>
+        <li>Each tick validated via <code>parse_tick_event()</code></li>
+        <li>Valid ticks routed to correct <b>InMemoryShard</b></li>
+        <li>Offsets committed after successful processing</li>
+        <li>Bad events sent to <code>stock_ticks_dlq</code> (DLQ)</li>
+      </ol>
+    </div>
+    <div class="flow-card">
+      <h3><span style="color:var(--api);">&#9654;</span> API Request Flow</h3>
+      <ol>
+        <li><b>Client</b> sends HTTP request to <b>Nginx</b> on :8080</li>
+        <li>Gateway applies rate limiting, routes to API</li>
+        <li><b>FastAPI</b> handles the request on :8000</li>
+        <li>Storage operations route to correct <b>Shard</b></li>
+        <li>Response returned through the gateway to client</li>
+      </ol>
+    </div>
+  </div>
+</div>
+
+<script>
+const edges = [
+  { from: 'producer', to: 'kafka',    label: 'produce',       color: '#ef5050',  marker: 'ah-producer' },
+  { from: 'zk',       to: 'kafka',    label: 'manages',       color: '#9775d4',  marker: 'ah-zk' },
+  { from: 'kafka',    to: 'ingestor', label: 'consume',       color: '#e8652a',  marker: 'ah-kafka',   animated: true },
+  { from: 'ingestor', to: 'shard0',   label: '',              color: '#4a90e2',  marker: 'ah-ingest' },
+  { from: 'ingestor', to: 'shard1',   label: 'write ticks',   color: '#4a90e2',  marker: 'ah-ingest' },
+  { from: 'ingestor', to: 'shard2',   label: '',              color: '#4a90e2',  marker: 'ah-ingest' },
+  { from: 'api',      to: 'shard0',   label: '',              color: '#34d9c4',  marker: 'ah-api' },
+  { from: 'api',      to: 'shard1',   label: 'read/write',    color: '#34d9c4',  marker: 'ah-api' },
+  { from: 'api',      to: 'shard2',   label: '',              color: '#34d9c4',  marker: 'ah-api' },
+  { from: 'client',   to: 'gateway',  label: 'HTTP :8080',    color: '#e870a8',  marker: 'ah-client',  animated: true },
+  { from: 'gateway',  to: 'api',      label: 'proxy_pass',    color: '#f0a030',  marker: 'ah-gw' },
+];
+
+const sameProcess = { from: 'ingestor', to: 'api', label: 'same process' };
+
+function center(el) {
+  const r = el.getBoundingClientRect();
+  const dr = document.getElementById('diagram').getBoundingClientRect();
+  return { x: r.left - dr.left + r.width / 2, y: r.top - dr.top + r.height / 2 };
+}
+
+function edgeAnchor(fromEl, toEl) {
+  const fc = center(fromEl), tc = center(toEl);
+  const fr = fromEl.getBoundingClientRect(), tr = toEl.getBoundingClientRect();
+  const dr = document.getElementById('diagram').getBoundingClientRect();
+
+  function borderPoint(cx, cy, w, h, tx, ty) {
+    const dx = tx - cx, dy = ty - cy;
+    const absDx = Math.abs(dx), absDy = Math.abs(dy);
+    const hw = w / 2, hh = h / 2;
+    let scale;
+    if (absDx * hh > absDy * hw) scale = hw / (absDx || 1);
+    else scale = hh / (absDy || 1);
+    return { x: cx + dx * scale, y: cy + dy * scale };
+  }
+
+  const p1 = borderPoint(fc.x, fc.y, fr.width, fr.height, tc.x, tc.y);
+  const p2 = borderPoint(tc.x, tc.y, tr.width, tr.height, fc.x, fc.y);
+  return { x1: p1.x, y1: p1.y, x2: p2.x, y2: p2.y };
+}
+
+function drawEdges() {
+  const svg = document.getElementById('arrowsSvg');
+  svg.querySelectorAll('.drawn').forEach(e => e.remove());
+
+  edges.forEach(e => {
+    const fromEl = document.getElementById(e.from);
+    const toEl = document.getElementById(e.to);
+    if (!fromEl || !toEl) return;
+    const a = edgeAnchor(fromEl, toEl);
+
+    const line = document.createElementNS('http://www.w3.org/2000/svg', 'line');
+    line.setAttribute('x1', a.x1);
+    line.setAttribute('y1', a.y1);
+    line.setAttribute('x2', a.x2);
+    line.setAttribute('y2', a.y2);
+    line.setAttribute('stroke', e.color);
+    line.setAttribute('stroke-width', '2');
+    line.setAttribute('opacity', '0.55');
+    line.setAttribute('marker-end', `url(#${e.marker})`);
+    line.setAttribute('data-from', e.from);
+    line.setAttribute('data-to', e.to);
+    line.classList.add('drawn', 'edge');
+    if (e.animated) line.classList.add('animated-edge');
+    svg.appendChild(line);
+
+    if (e.label) {
+      const txt = document.createElementNS('http://www.w3.org/2000/svg', 'text');
+      txt.setAttribute('x', (a.x1 + a.x2) / 2);
+      txt.setAttribute('y', (a.y1 + a.y2) / 2 - 6);
+      txt.textContent = e.label;
+      txt.classList.add('drawn', 'edge-label');
+      txt.setAttribute('data-from', e.from);
+      txt.setAttribute('data-to', e.to);
+      svg.appendChild(txt);
+    }
+  });
+
+  {
+    const fromEl = document.getElementById(sameProcess.from);
+    const toEl = document.getElementById(sameProcess.to);
+    if (fromEl && toEl) {
+      const a = edgeAnchor(fromEl, toEl);
+      const line = document.createElementNS('http://www.w3.org/2000/svg', 'line');
+      line.setAttribute('x1', a.x1);
+      line.setAttribute('y1', a.y1);
+      line.setAttribute('x2', a.x2);
+      line.setAttribute('y2', a.y2);
+      line.setAttribute('stroke', '#5a6b82');
+      line.setAttribute('stroke-width', '1');
+      line.setAttribute('stroke-dasharray', '5 4');
+      line.setAttribute('opacity', '0.5');
+      line.classList.add('drawn');
+      svg.appendChild(line);
+
+      const txt = document.createElementNS('http://www.w3.org/2000/svg', 'text');
+      txt.setAttribute('x', (a.x1 + a.x2) / 2 + 14);
+      txt.setAttribute('y', (a.y1 + a.y2) / 2);
+      txt.textContent = sameProcess.label;
+      txt.classList.add('drawn', 'edge-label');
+      svg.appendChild(txt);
+    }
+  }
+}
+
+function highlightEdges(nodeId) {
+  document.querySelectorAll('.drawn.edge').forEach(el => {
+    const from = el.getAttribute('data-from');
+    const to = el.getAttribute('data-to');
+    if (from === nodeId || to === nodeId) {
+      el.setAttribute('opacity', '1');
+      el.setAttribute('stroke-width', '3');
+    } else {
+      el.setAttribute('opacity', '0.15');
+    }
+  });
+  document.querySelectorAll('.drawn.edge-label').forEach(el => {
+    const from = el.getAttribute('data-from');
+    const to = el.getAttribute('data-to');
+    if (from === nodeId || to === nodeId) {
+      el.setAttribute('fill', '#dfe6f0');
+    } else {
+      el.setAttribute('opacity', '0.15');
+    }
+  });
+}
+
+function clearEdges() {
+  document.querySelectorAll('.drawn.edge').forEach(el => {
+    el.setAttribute('opacity', '0.55');
+    el.setAttribute('stroke-width', '2');
+  });
+  document.querySelectorAll('.drawn.edge-label').forEach(el => {
+    el.setAttribute('fill', '#5a6b82');
+    el.setAttribute('opacity', '1');
+  });
+}
+
+window.addEventListener('load', drawEdges);
+window.addEventListener('resize', drawEdges);
+</script>
+</body>
+</html>

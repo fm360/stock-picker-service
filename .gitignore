@@ -1,0 +1,15 @@
+# Course materials and personal documents -- not part of the public project
+Archive.zip
+docs/stockpicker.pdf
+docs/project_appendix.pdf
+docs/Single Programmer Affidavit.docx
+
+# Python
+__pycache__/
+*.pyc
+.pytest_cache/
+.venv/
+venv/
+
+# macOS
+.DS_Store
